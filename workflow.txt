@@ -1,0 +1,150 @@
+# Workflow for Running the Bitcoin Price Tracker Script on a DigitalOcean Droplet
+
+## 1. Overview
+This guide explains how to set up and run a Python script on a DigitalOcean droplet to monitor Bitcoin prices and send alerts via Pushover. The setup includes a bare Git repository and a working directory linked to it, with a post-receive hook to automate updates.
+
+## 2. Prerequisites
+- A DigitalOcean droplet running a Linux distribution (e.g., Ubuntu).
+- Python 3 installed on the droplet.
+- A Pushover account with API token and user key.
+- `git` installed on the droplet.
+- `pip` installed for managing Python packages.
+
+## 3. Set Up Git on Your Droplet
+
+### 3.1. Install Git
+1. Connect to your droplet via SSH:
+    ```bash
+    ssh root@178.62.72.233
+    ```
+2. Install Git if it's not already present:
+    ```bash
+    sudo apt-get update
+    sudo apt-get install git
+    ```
+
+### 3.2. Create a Bare Git Repository
+1. Create the bare Git repository:
+    ```bash
+    mkdir ~/my_project.git
+    cd ~/my_project.git
+    git init --bare
+    ```
+
+### 3.3. Set Up a Post-Receive Hook
+1. Create the post-receive hook to update the working directory and restart the service when pushing changes:
+    ```bash
+    cat > hooks/post-receive << EOL
+    #!/bin/bash
+    GIT_WORK_TREE=/root/my_project
+    GIT_DIR=/root/my_project.git
+    git --work-tree=\$GIT_WORK_TREE --git-dir=\$GIT_DIR checkout -f
+
+    # Restart the btc-tracker service
+    sudo systemctl restart btc-tracker.service
+
+    echo "btc-tracker service restarted successfully."
+    EOL
+    chmod +x hooks/post-receive
+    ```
+
+## 3. Local Setup
+
+### 4.1. Initialize a Git Repository Locally
+1. On your local machine, navigate to your project directory and initialize a Git repository:
+    ```bash
+    git init
+    git add .
+    git commit -m "Initial commit"
+    ```
+
+### 4.2. Add the Droplet as a Remote
+1. Add your droplet as a remote repository:
+    ```bash
+    git remote add droplet root@178.62.72.233:my_project.git
+    ```
+
+### 4.3. Push Your Changes
+1. Push your changes to the droplet:
+    ```bash
+    git push droplet main
+    ```
+
+## 5. Managing Updates
+
+### 5.1. Make and Commit Changes Locally
+1. Make any changes to your script or project files.
+2. Commit your changes:
+    ```bash
+    git add .
+    git commit -m "Description of changes"
+    ```
+
+### 5.2. Push Updates to the Droplet
+1. Push your changes to the droplet:
+    ```bash
+    git push droplet main
+    ```
+
+## 6. Running the Script
+
+### 6.1. Initial Service Setup
+1. Create a systemd service file:
+    ```bash
+    sudo nano /etc/systemd/system/btc-tracker.service
+    ```
+2. Add the following content:
+    ```
+    [Unit]
+    Description=Bitcoin Price Tracker
+    After=network.target
+
+    [Service]
+    ExecStart=/usr/bin/python3 /root/my_project/track_btc.py
+    WorkingDirectory=/root/my_project
+    Restart=always
+    User=root
+
+    [Install]
+    WantedBy=multi-user.target
+    ```
+3. Save and exit the editor.
+4. Reload systemd to recognize the new service:
+    ```bash
+    sudo systemctl daemon-reload
+    ```
+5. Enable the service to start on boot:
+    ```bash
+    sudo systemctl enable btc-tracker.service
+    ```
+6. Start the service:
+    ```bash
+    sudo systemctl start btc-tracker.service
+    ```
+
+### 6.2. Managing the Service
+- To stop the service:
+    ```bash
+    sudo systemctl stop btc-tracker.service
+    ```
+- To restart the service:
+    ```bash
+    sudo systemctl restart btc-tracker.service
+    ```
+- To check the status of the service:
+    ```bash
+    sudo systemctl status btc-tracker.service
+    ```
+
+### 6.3. Monitoring the Script
+- View the logs in real-time:
+    ```bash
+    sudo journalctl -u btc-tracker.service -f
+    ```
+
+## 7. Handling Errors
+- If the script fails, the `on_error` function will log the error, and the script will attempt to reconnect after 60 seconds.
+- Ensure your Pushover API credentials and WebSocket connection are correctly configured.
+
+## 8. Conclusion
+This setup allows you to monitor Bitcoin prices in real-time and receive alerts for significant changes. By using a bare Git repository and post-receive hook, you can easily update and manage the script remotely. The workflow is efficient, version-controlled, and requires minimal setup on the droplet side after the initial configuration.
